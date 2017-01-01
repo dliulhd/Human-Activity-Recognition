@@ -1,0 +1,369 @@
+---
+title: "Towards a machine learning approach to human activity recognition"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+author: Lihui Liu
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    number_sections: true
+#bibliography: bibliography.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, message = FALSE)
+```
+
+# Summary of results
+
+Using data from sensors tracking the movements of exercisers performing wight lifting, and the ratings of the movements obtained from assessments independent of the sensors, this report studies the correlation between the two sides, and explores the viability of human movement recognition via sensor data.
+
+The wearable sensors, attached to the forearms, arms, belts and the dumbbells of the participating exercisers, record their Euler angles (yaw, pitch and roll), along with the readings of the accelerometer, gyroscope and magnetometer. On the other hand, the participants' movements are rated "A" to "E", where "A" is correct, while "B" to "E" are associated with a certain type of mistake (see [Velloso, Bulling, Gellersen, Ugulino and Fuks, "Qualitative Activity Recognition of Weight Lifting Exercises", ACM SIGCHI 2013](http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf)).
+
+Prediction models are trained using sensor data as the predictors, and ratings as the dependent variable. Several machine learning algorithms are used in the training: prediction tree, bagging, random forest, and linear discriminant analysis. These individual models are then combined into a single model to be the version applied out of sample. The prediction of this combined model reaches 0.99 level of accuracy on the validation data set, and scores 19 over 20 on the quiz data set.
+
+The probable out-of-sample performance is speculated in the end. It is emphasized that the success of the model is achieved in a situation where the validation and the quiz data sets are provided by the same six participants underlying the training data set. One should expect significantly higher prediction errors when applying the model on data from a different exerciser, given the small number of individual contributors of the training data. An example is presented to illustrate the point where the model is trained on five participants, and then applied on the sixth person. Just as speculated, the resulting accuracy is only at the level of 0.2, even though the in-sample testing accuracy hits 0.99. 
+
+The codes and main results are presented in the rest of the report. Sec 2 includes the steps of loading data and choosing variables. Sec 3 lays out the training of individual models, showing details of cross validation and testing. Sec 4 combines the individual models trained in Sec 3 into one model as the final version, and have it tested on the validation data set. Sec 5 applies the model trained in Sec 4 on the quiz data set. Sec 6 discusses the out-of-sample performance of the model.
+
+
+
+
+
+# Data preparation
+
+
+## Loading data sets
+
+Two sets of data are used for constructing and testing the model respectively. They are retrieved from the following sources:
+
+* Training data set: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+* Quiz data set: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The following codes are for loading the data sets:
+
+```{r prepare, include=FALSE}
+
+library(utils)
+library(base)
+library(caret)
+library(ggplot2)
+library(e1071)
+
+
+knitr::opts_chunk$set(echo = TRUE)
+
+
+
+progDIR <- "C:/Users/Lihui/Dropbox/Coursera/JHU Data Science/Practical Machine Learning/W4 Regularized Regression/MLPeer/Human-Activity-Recognition"
+
+setwd(progDIR)
+```
+
+```{r reading data, message = FALSE}
+
+
+urlTr <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+urlTs <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+
+fileTr <- 'pml-training.csv'
+fileQuiz <- 'pml-testing.csv'
+
+if(!file.exists(fileTr))
+{download.file(url = urlTr, destfile = fileTr)}
+
+if(!file.exists(fileQuiz))
+{download.file(url = urlTs, destfile = fileQuiz)}
+
+if(!exists('trainDataRaw')){trainDataRaw <- read.csv(fileTr)}
+if(!exists('quizData')){quizData <- read.csv(fileQuiz)}
+
+```
+
+
+
+
+## Choosing predictor variables
+
+The predictors used are the Euler angle readings of the four wearable sensors: yaw, pitch and roll, as well as their accelerometer, gyroscope and magnetometer readings. Other variables are not included either because they are irrelevant, such as user name and time stamp, or because there are too many missing data points, such as the average, variance, etc of raw data within a time frame. The latter, however, contains important information, and needs to be considered as predictors should more data points become available.
+
+The graphs below show the distributions of the dumbbell's Euler angle data points, colored according to the ratings of the participants' body movement. These scatter plots show that data points of different ratings (i.e. different colors) have different area of spreading.
+
+```{r Dumbbell Euler angle}
+featurePlot(trainDataRaw[,c("roll_dumbbell", "pitch_dumbbell", "yaw_dumbbell")], y = trainDataRaw[,c("classe")],  plot = "pairs",auto.key = list(columns = length(levels(trainDataRaw$classe))))
+```
+
+Similar pattern is observed in other variables mentioned in the beginning of this section, where data points of different colors are spread over different areas. This feature motivates the inclusion of all 48 variables, since they can all contribute to the recognition of body movement ratings. 
+
+The codes below pick out these predictor variables, and partition the original raw training data set into three subsets for training, testing and validation respectively. The proportion of the partitions are 0.56:0.24:0.2. The reason for this three-fold partition is to build and test a combined model which aggregates different individual machine learning models.
+
+
+```{r variables}
+varPredictor = c("roll_dumbbell", "pitch_dumbbell", "yaw_dumbbell",
+  "roll_arm", "pitch_arm", "yaw_arm",
+  "roll_forearm", "pitch_forearm", "yaw_forearm",
+  "roll_belt", "pitch_belt", "yaw_belt",
+  "gyros_dumbbell_x", "gyros_dumbbell_y", "gyros_dumbbell_z","accel_dumbbell_x", "accel_dumbbell_y",
+  "accel_dumbbell_z","magnet_dumbbell_x", "magnet_dumbbell_y", "magnet_dumbbell_z",
+  "gyros_belt_x", "gyros_belt_y", "gyros_belt_z","accel_belt_x", "accel_belt_y", "accel_belt_z",
+  "magnet_belt_x", "magnet_belt_y","magnet_belt_z",
+  "gyros_forearm_x", "gyros_forearm_y", "gyros_forearm_z","accel_forearm_x", "accel_forearm_y", 
+  "accel_forearm_z","magnet_forearm_x", "magnet_forearm_y", "magnet_forearm_z",
+  "gyros_arm_x", "gyros_arm_y", "gyros_arm_z","accel_arm_x", "accel_arm_y", "accel_arm_z",
+  "magnet_arm_x", "magnet_arm_y", "magnet_arm_z","classe")
+
+set.seed(2016)
+
+idxNonValidation <- createDataPartition(y= trainDataRaw$classe, p = 0.8, list = FALSE)
+nonValidationDF <- trainDataRaw[idxNonValidation,varPredictor]
+validationDF <- trainDataRaw[-idxNonValidation,varPredictor]
+idxTrain <- createDataPartition(y= nonValidationDF$classe, p = 0.7, list = FALSE)
+trainDF <- nonValidationDF[idxTrain,varPredictor]
+testDF <- nonValidationDF[-idxTrain,varPredictor]
+```
+
+
+
+# Machine learning models
+
+The individual models adopted are prediction tree, bagging, random forest, and linear discriminant analysis. The codes are reported in the following four subsections, which show the model training, and prediction test on the testing data set. Five-fold cross-validation is used in the prediction tree and random forest approaches. The random forest approach achieves the highest accuracy and kappa value when predicting over the testing data set. 
+
+All these models will be aggregated into a single model in the next section to enhance prediction performance.
+
+## Prediction tree
+
+* Model fit
+
+```{r tree fit and plot, message = FALSE}
+library(rpart)
+treeFit <- train(classe ~. , method = "rpart", data = trainDF
+                  , trControl =trainControl(method = "cv",number = 5 ))
+show(treeFit)
+```
+* Prediction on test data set
+
+```{r tree on testing data}
+predTree <- predict(treeFit, newdata = testDF)
+confMtxTree <- confusionMatrix(testDF$classe, predTree)
+show(confMtxTree)
+```
+
+
+
+
+## Classification tree bagging
+
+* Model fit
+
+```{r bagging fit, message= FALSE}
+library(ipred)
+library(survival)
+library(plyr)
+baggingFit <- bagging(classe ~., data = trainDF)
+show(baggingFit)
+```
+
+* Prediction on testing data set
+```{r bagging prediction on testing data set, message = FALSE}
+predBagging <- predict(baggingFit, newdata = testDF)
+confMtxBagging <- confusionMatrix(testDF$classe, predBagging)
+show(confMtxBagging)
+```
+
+## Random forest
+
+* Model fit
+```{r randomForest, message = FALSE, cache=TRUE}
+library(randomForest)
+set.seed(1000)
+ctrl = trainControl(method = "cv", number = 5)
+randForestFit <- train(classe ~., data = trainDF, 
+                       trControl = ctrl, method="rf", ntree = 100)
+show(randForestFit)
+```
+
+
+
+* Prediction on test data set
+```{r randomForest on test dataset}
+predRandForest <- predict(randForestFit, newdata = testDF)
+confMtxRF <- confusionMatrix(testDF$classe, predRandForest)
+show(confMtxRF)
+```
+
+
+
+## Linear discriminant analysis
+
+* Model fit
+
+```{r lda}
+library(MASS)
+ldaFit <- train(classe ~., data = trainDF, method  = "lda")
+show(ldaFit)
+```
+
+* Prediction on test data set
+
+```{r lda on test data set}
+predLDA <- predict(ldaFit, newdata = testDF)
+confMtxLDA <- confusionMatrix(testDF$classe, predLDA)
+show(confMtxLDA)
+```
+
+
+# Combining individual models
+
+In the contents below, the four individual models of the previous section are combined via random forest algorithm into a single model, in order to achieve enhanced prediction performance. The model is tested on the validation data set, where the accuracy reaches 0.99.
+
+* Fit the combined classifier model on test data set
+
+```{r rf and bagging via rf}
+cNames <- c("RF","BAGGING","TREE",
+            "LDA")
+combTestDF <- data.frame(predRandForest,predBagging,  predTree, 
+                         predLDA, testDF$classe)
+colnames(combTestDF) <- c(cNames,"classe")
+combRfFit <- randomForest(classe~., data = combTestDF, method = "class")
+combRfPred <- predict(combRfFit, combTestDF)
+confMtxCombRf <- confusionMatrix(testDF$classe,combRfPred)
+show(confMtxCombRf)
+```
+
+* Testing the combined model over validation data set
+
+```{r rf and bagging via rf validation}
+predTreeV <- predict(treeFit, newdata = validationDF)
+predBaggingV <- predict(baggingFit, newdata = validationDF)
+predRandForestV <- predict(randForestFit, newdata = validationDF)
+predLDAV <- predict(ldaFit, newdata = validationDF)
+combValDF <- data.frame(predRandForestV,predBaggingV, predTreeV, predLDAV)
+colnames(combValDF) <- cNames
+combRfPredV <- predict(combRfFit, newdata = combValDF, type = "class")
+confMtxCombRfV <- confusionMatrix(validationDF$classe,combRfPredV)
+show(confMtxCombRfV)
+```
+
+
+# Prediction on the quiz data set
+
+The aggregated model of the previous section is now deployed on the quiz data set. The procedure and the results are presented below. The model gives 19 correct predictions among the 20 quiz cases.
+
+* Prepare quiz data for applying the prediction model
+
+```{r quiz case data}
+varPredictorQ = c("roll_dumbbell", "pitch_dumbbell", "yaw_dumbbell",
+    "roll_arm", "pitch_arm", "yaw_arm",
+    "roll_forearm", "pitch_forearm", "yaw_forearm",
+    "roll_belt", "pitch_belt", "yaw_belt",
+    "gyros_dumbbell_x", "gyros_dumbbell_y", "gyros_dumbbell_z",
+    "accel_dumbbell_x", "accel_dumbbell_y", "accel_dumbbell_z",
+    "magnet_dumbbell_x", "magnet_dumbbell_y", "magnet_dumbbell_z",
+    "gyros_belt_x", "gyros_belt_y", "gyros_belt_z",
+    "accel_belt_x", "accel_belt_y", "accel_belt_z",
+    "magnet_belt_x", "magnet_belt_y", "magnet_belt_z",
+    "gyros_forearm_x", "gyros_forearm_y", "gyros_forearm_z",
+    "accel_forearm_x", "accel_forearm_y", "accel_forearm_z",
+    "magnet_forearm_x", "magnet_forearm_y", "magnet_forearm_z",
+    "gyros_arm_x", "gyros_arm_y", "gyros_arm_z",
+    "accel_arm_x", "accel_arm_y", "accel_arm_z",
+    "magnet_arm_x", "magnet_arm_y", "magnet_arm_z")
+quizDF <- quizData[,varPredictorQ]
+```
+
+
+* Prediction result of the twenty quiz cases
+
+```{r quiz prediction}
+predRandForestQ <- predict(randForestFit,quizDF)
+predBaggingQ <- predict(baggingFit,quizDF)
+predTreeQ <- predict(treeFit,quizDF)
+predLDAQ <- predict(ldaFit,quizDF)
+combQuizDF <- data.frame(predRandForestQ,predBaggingQ, predTreeQ, predLDAQ)
+colnames(combQuizDF) <- cNames
+combRfPredQ <- predict(combRfFit, newdata = combQuizDF, type = "class")
+show(combRfPredQ)
+```
+
+# Out of sample error
+
+**High performance on the out-of-sample data provided**
+
+In the results obtained so far, the predictions over the validation data have nearly 0.99 of accuracy, comparable to the best predictions on the test data sets. Moreover, the quiz data set prediction scores 19 over 20. These results seem to be presenting an optimistic perspective of the model's wider out-of-sample application.
+
+**Small number of participants may cause over-fitting**
+
+However, all these successful predictions did not touch an important constraint of the model, that all data is contributed by only six participants (six levels in the variable of user_name). With such a tiny number of participants, the model obtained in Sec 4 can be severely over-fit, since there is not enough data to smooth out the specificity of individuals. If this is the case, the prediction error can be soaring once the model is applied to data generated by an exerciser not in the initial sample space. 
+
+The following plots single out the dumbbell Euler angle data of two individual participants. The difference is remarkable, suggesting that data from far more participants is needed to average out such individual specificities and extract the most relevant information.
+
+```{r }
+featurePlot(trainDataRaw[as.integer(trainDataRaw$user_name)==1,c("roll_dumbbell", "pitch_dumbbell", "yaw_dumbbell")], y = trainDataRaw[as.integer(trainDataRaw$user_name)==1,c("classe")],  plot = "pairs",auto.key = list(columns = length(levels(trainDataRaw$classe))))
+```
+
+```{r }
+featurePlot(trainDataRaw[as.integer(trainDataRaw$user_name)==2,c("roll_dumbbell", "pitch_dumbbell", "yaw_dumbbell")], y = trainDataRaw[as.integer(trainDataRaw$user_name)==2,c("classe")],  plot = "pairs",auto.key = list(columns = length(levels(trainDataRaw$classe))))
+```
+
+
+**High out-of-sample error expected if a new participant is involved**
+
+Without data from an out-of-sample exerciser, one plausible way to have a preview of the speculated over-fitting is to train the model on five participants, and make prediction on the sixth person. This work is presented in the appendix using random forest model, where the result shows significantly lower performance where data is from the sixth participant. The corresponding prediction accuracy is 0.2, whereas the in-sample test prediction on the five participants providing training data has accuracy 0.98.
+
+
+**For improvement**
+
+Some ideas of next steps to explore in order to improve the applicability of the model are:
+
+* Enlarge the sample space by including more participants in data collection;
+* More careful and studied procedure of data preprocessing;
+* More sophisticated variable selection process.
+
+# Appendix: out-of-sample performance on a new user
+
+This appendix shows how prediction on out-of-sample data can go terribly wrong if the data is from a new person not among the initial participants providing the training data set. 
+
+To this end the raw data set is partitioned into a training data set, test data set, and validation data set. The training and test data sets are from five of the six participants, while the validation data set is from the sixth participant. Random forest model is used in the example. 
+
+The results show that the prediction has accuracy near 0.99 on the test data set, while on the validation data set, the accuracy is merely 0.2.
+
+* Preparing data: the participant Eurico is the sole data contributor of the validation data set, while he is excluded from the training and testing data sets.
+
+```{r Out-of-sample data prepare}
+set.seed(2016)
+nonValidationDF1 <- trainDataRaw[trainDataRaw$user_name != "eurico",varPredictor]
+validationDF1 <- trainDataRaw[trainDataRaw$user_name == "eurico",varPredictor]
+idxTrain1 <- createDataPartition(y= nonValidationDF1$classe, p = 0.7, list = FALSE)
+trainDF1 <- nonValidationDF1[idxTrain1,varPredictor]
+testDF1 <- nonValidationDF1[-idxTrain1,varPredictor]
+```
+
+
+
+* Model fitting and prediction on test data set
+
+```{r fitting for prediction on new participant, message = FALSE}
+set.seed(1000)
+ctrl = trainControl(method = "cv", number = 5)
+randForestFit1 <- train(classe ~., data = trainDF1, 
+                       trControl = ctrl, method="rf", ntree = 100)
+show(randForestFit1)
+```
+
+```{r test data set}
+predRandForest1 <- predict(randForestFit1, newdata = testDF1)
+confMtxRF1 <- confusionMatrix(testDF1$classe, predRandForest1)
+show(confMtxRF1)
+```
+
+
+* Prediction on validation data set from a new participant
+
+
+```{r validation data set new participant}
+predRandForestV1 <- predict(randForestFit1, newdata = validationDF1)
+confMtxRFV1 <- confusionMatrix(validationDF1$classe, predRandForestV1)
+show(confMtxRFV1)
+```
+
