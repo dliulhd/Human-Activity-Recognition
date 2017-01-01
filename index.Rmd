@@ -17,7 +17,7 @@ knitr::opts_chunk$set(echo = TRUE, cache = TRUE, message = FALSE)
 
 # Summary of results
 
-Using data from sensors tracking the movements of exercisers performing wight lifting, and the ratings of the movements obtained from assessments independent of the sensors, this report studies the correlation between the two sides, and explores the viability of human movement recognition via sensor data.
+Using data from sensors tracking the movements of exercisers, and ratings of the movements from assessments independent of the sensors, this report studies the correlation between the two sides, and explores the viability of human body movement recognition via sensor data.
 
 The wearable sensors, attached to the forearms, arms, belts and the dumbbells of the participating exercisers, record their Euler angles (yaw, pitch and roll), along with the readings of the accelerometer, gyroscope and magnetometer. On the other hand, the participants' movements are rated "A" to "E", where "A" is correct, while "B" to "E" are associated with a certain type of mistake (see [Velloso, Bulling, Gellersen, Ugulino and Fuks, "Qualitative Activity Recognition of Weight Lifting Exercises", ACM SIGCHI 2013](http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf)).
 

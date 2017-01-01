@@ -216,14 +216,14 @@ div.tocify {
 
 <h1 class="title toc-ignore">Towards a machine learning approach to human activity recognition</h1>
 <h4 class="author"><em>Lihui Liu</em></h4>
-<h4 class="date"><em>31 December, 2016</em></h4>
+<h4 class="date"><em>01 January, 2017</em></h4>
 
 </div>
 
 
 <div id="summary-of-results" class="section level1">
 <h1><span class="header-section-number">1</span> Summary of results</h1>
-<p>Using data from sensors tracking the movements of exercisers performing wight lifting, and the ratings of the movements obtained from assessments independent of the sensors, this report studies the correlation between the two sides, and explores the viability of human movement recognition via sensor data.</p>
+<p>Using data from sensors tracking the movements of exercisers, and ratings of the movements from assessments independent of the sensors, this report studies the correlation between the two sides, and explores the viability of human body movement recognition via sensor data.</p>
 <p>The wearable sensors, attached to the forearms, arms, belts and the dumbbells of the participating exercisers, record their Euler angles (yaw, pitch and roll), along with the readings of the accelerometer, gyroscope and magnetometer. On the other hand, the participants’ movements are rated “A” to “E”, where “A” is correct, while “B” to “E” are associated with a certain type of mistake (see <a href="http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf">Velloso, Bulling, Gellersen, Ugulino and Fuks, “Qualitative Activity Recognition of Weight Lifting Exercises”, ACM SIGCHI 2013</a>).</p>
 <p>Prediction models are trained using sensor data as the predictors, and ratings as the dependent variable. Several machine learning algorithms are used in the training: prediction tree, bagging, random forest, and linear discriminant analysis. These individual models are then combined into a single model to be the version applied out of sample. The prediction of this combined model reaches 0.99 level of accuracy on the validation data set, and scores 19 over 20 on the quiz data set.</p>
 <p>The probable out-of-sample performance is speculated in the end. It is emphasized that the success of the model is achieved in a situation where the validation and the quiz data sets are provided by the same six participants underlying the training data set. One should expect significantly higher prediction errors when applying the model on data from a different exerciser, given the small number of individual contributors of the training data. An example is presented to illustrate the point where the model is trained on five participants, and then applied on the sixth person. Just as speculated, the resulting accuracy is only at the level of 0.2, even though the in-sample testing accuracy hits 0.99.</p>
